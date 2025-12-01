@@ -18,7 +18,7 @@ interface ExportPreviewDialogProps {
   onOpenChange: (open: boolean) => void;
   feeds: FeedItem[];
   onConfirmExport: (format: 'opml' | 'json') => void;
-  exportType: "all" | "selected";
+  exportType: "all" | "selected" | "current";
 }
 
 export function ExportPreviewDialog({
@@ -56,8 +56,10 @@ export function ExportPreviewDialog({
           <DialogTitle>导出预览</DialogTitle>
           <DialogDescription>
             {exportType === "all"
-              ? `即将导出 ${feeds.length} 个订阅源`
-              : `即将导出 ${feeds.length} 个已选订阅源`}
+              ? `即将导出 ${feeds.length} 个订阅源（全部）`
+              : exportType === "selected"
+              ? `即将导出 ${feeds.length} 个订阅源（已选）`
+              : `即将导出 ${feeds.length} 个订阅源（当前视图）`}
           </DialogDescription>
         </DialogHeader>
 

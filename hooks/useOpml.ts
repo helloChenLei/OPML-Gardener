@@ -6,6 +6,7 @@ import { parseOpml, exportOpml, downloadOpml } from "@/lib/opml-parser";
 import { parseJson, exportToJson, downloadJson } from "@/lib/json-handler";
 import { useHistory } from "./useHistory";
 import { validateMultipleRssUrls } from "@/lib/rss-validator";
+import { batchCheckFeeds } from "@/lib/feed-health-checker";
 
 export function useOpml() {
   const { 
@@ -19,14 +20,20 @@ export function useOpml() {
   } = useHistory<FeedItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<"title" | "category" | "date">("title");
+  const [validationFilter, setValidationFilter] = useState<"all" | "valid" | "invalid" | "unchecked">("all");
+  const [sortBy, setSortBy] = useState<"title" | "category" | "xmlUrl" | "isValid" | "lastUpdated">("title");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [isValidating, setIsValidating] = useState(false);
+  const [isRefreshingDates, setIsRefreshingDates] = useState(false);
+  const [refreshProgress, setRefreshProgress] = useState({ completed: 0, total: 0 });
 
   // Import OPML file
   const importOpml = (fileContent: string) => {
     try {
       const parsedFeeds = parseOpml(fileContent);
       resetHistory(parsedFeeds);
+      // Auto-start validation after import
+      setTimeout(() => startAutoValidation(parsedFeeds), 500);
       return { success: true, count: parsedFeeds.length };
     } catch (error) {
       console.error("Failed to parse OPML:", error);
@@ -39,6 +46,13 @@ export function useOpml() {
     try {
       const parsedFeeds = parseJson(fileContent);
       resetHistory(parsedFeeds);
+      // Auto-start validation after import if not already validated
+      setTimeout(() => {
+        const needsValidation = parsedFeeds.some(f => f.isValid === undefined);
+        if (needsValidation) {
+          startAutoValidation(parsedFeeds);
+        }
+      }, 500);
       return { success: true, count: parsedFeeds.length };
     } catch (error) {
       console.error("Failed to parse JSON:", error);
@@ -46,8 +60,47 @@ export function useOpml() {
     }
   };
 
+  // Auto validation in background - fast batch validation
+  const startAutoValidation = async (feedsToValidate: FeedItem[]) => {
+    if (!feedsToValidate || feedsToValidate.length === 0) return;
+    
+    setIsValidating(true);
+    
+    try {
+      // Batch validate all URLs at once (fast URL format check only)
+      const urls = feedsToValidate.map(f => f.xmlUrl);
+      const results = await validateMultipleRssUrls(urls);
+      
+      // Update all feeds at once
+      setFeeds((prevFeeds) => {
+        if (!prevFeeds || !Array.isArray(prevFeeds)) return prevFeeds;
+        
+        return prevFeeds.map((f) => {
+          const validationResult = results.get(f.xmlUrl);
+          if (validationResult) {
+            return {
+              ...f,
+              isValid: validationResult.isValid,
+              lastChecked: new Date(),
+              lastUpdated: validationResult.lastUpdated,
+            };
+          }
+          return f;
+        });
+      });
+    } catch (error) {
+      console.error('Batch validation failed:', error);
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
   // Export selected or all feeds as OPML
   const exportFeeds = (selectedOnly = false) => {
+    if (!feeds || !Array.isArray(feeds)) {
+      return { success: false, error: "No feeds available" };
+    }
+
     const feedsToExport = selectedOnly
       ? feeds.filter((f) => f.isSelected)
       : feeds;
@@ -68,6 +121,10 @@ export function useOpml() {
 
   // Export selected or all feeds as JSON
   const exportFeedsAsJson = (selectedOnly = false) => {
+    if (!feeds || !Array.isArray(feeds)) {
+      return { success: false, error: "No feeds available" };
+    }
+
     const feedsToExport = selectedOnly
       ? feeds.filter((f) => f.isSelected)
       : feeds;
@@ -98,6 +155,14 @@ export function useOpml() {
     setFeeds((prev) => prev.filter((feed) => feed.id !== id));
   };
 
+  // Bulk delete selected feeds
+  const bulkDeleteFeeds = () => {
+    const selectedFeeds = feeds.filter((f) => f.isSelected);
+    const count = selectedFeeds.length;
+    setFeeds((prev) => prev.filter((feed) => !feed.isSelected));
+    return count;
+  };
+
   // Toggle feed selection
   const toggleFeedSelection = (id: string) => {
     setFeeds((prev) =>
@@ -107,9 +172,16 @@ export function useOpml() {
     );
   };
 
-  // Select/deselect all feeds
-  const toggleAllSelection = (selected: boolean) => {
-    setFeeds((prev) => prev.map((feed) => ({ ...feed, isSelected: selected })));
+  // Select/deselect all feeds (or specific feeds if feedIds provided)
+  const toggleAllSelection = (selected: boolean, feedIds?: string[]) => {
+    setFeeds((prev) => prev.map((feed) => {
+      // If feedIds is provided, only toggle those feeds
+      if (feedIds && feedIds.length > 0) {
+        return feedIds.includes(feed.id) ? { ...feed, isSelected: selected } : feed;
+      }
+      // Otherwise toggle all feeds
+      return { ...feed, isSelected: selected };
+    }));
   };
 
   // Bulk update category
@@ -123,6 +195,10 @@ export function useOpml() {
 
   // Remove duplicates based on xmlUrl
   const removeDuplicates = () => {
+    if (!feeds || !Array.isArray(feeds)) {
+      return 0;
+    }
+
     const seen = new Set<string>();
     const uniqueFeeds = feeds.filter((feed) => {
       if (seen.has(feed.xmlUrl)) {
@@ -142,10 +218,14 @@ export function useOpml() {
     return { success: true };
   };
 
-  // Validate RSS URLs
+  // Validate RSS URLs (kept for backward compatibility but not used in UI)
   const validateRssFeeds = async (
     onProgress?: (current: number, total: number) => void
   ) => {
+    if (!feeds || !Array.isArray(feeds)) {
+      return new Map();
+    }
+
     const urls = feeds.map((f) => f.xmlUrl);
     const results = await validateMultipleRssUrls(urls, onProgress);
 
@@ -156,6 +236,7 @@ export function useOpml() {
         ...feed,
         isValid: result?.isValid ?? undefined,
         lastChecked: new Date(),
+        lastUpdated: result?.lastUpdated,
       };
     });
 
@@ -163,8 +244,61 @@ export function useOpml() {
     return results;
   };
 
-  // Filtered feeds based on search and category
+  // Refresh last updated dates for all feeds
+  const refreshLastUpdatedDates = async () => {
+    if (!feeds || !Array.isArray(feeds) || feeds.length === 0) {
+      return { success: false, error: "没有可刷新的订阅源" };
+    }
+
+    setIsRefreshingDates(true);
+    setRefreshProgress({ completed: 0, total: feeds.length });
+
+    try {
+      const urls = feeds.map((f) => f.xmlUrl);
+      
+      // Batch process with concurrency limit of 5
+      const results = await batchCheckFeeds(urls, 5, (completed, total) => {
+        setRefreshProgress({ completed, total });
+      });
+
+      // Update feeds with new dates
+      setFeeds((prevFeeds) => {
+        if (!prevFeeds || !Array.isArray(prevFeeds)) return prevFeeds;
+        
+        return prevFeeds.map((feed) => {
+          const result = results.get(feed.xmlUrl);
+          if (result && result.success && result.lastUpdated) {
+            return {
+              ...feed,
+              lastUpdated: new Date(result.lastUpdated),
+            };
+          }
+          return feed;
+        });
+      });
+
+      const successCount = Array.from(results.values()).filter(r => r.success).length;
+      return { 
+        success: true, 
+        count: successCount,
+        total: feeds.length 
+      };
+    } catch (error) {
+      console.error("Failed to refresh dates:", error);
+      return { success: false, error: String(error) };
+    } finally {
+      setIsRefreshingDates(false);
+      setRefreshProgress({ completed: 0, total: 0 });
+    }
+  };
+
+  // Filtered feeds based on search, category, and validation status
   const filteredFeeds = useMemo(() => {
+    // Safety check: ensure feeds is always an array
+    if (!feeds || !Array.isArray(feeds)) {
+      return [];
+    }
+
     let result = feeds.filter((feed) => {
       const matchesSearch =
         searchQuery === "" ||
@@ -174,7 +308,13 @@ export function useOpml() {
       const matchesCategory =
         selectedCategory === "all" || feed.category === selectedCategory;
 
-      return matchesSearch && matchesCategory;
+      const matchesValidation =
+        validationFilter === "all" ||
+        (validationFilter === "valid" && feed.isValid === true) ||
+        (validationFilter === "invalid" && feed.isValid === false) ||
+        (validationFilter === "unchecked" && feed.isValid === undefined);
+
+      return matchesSearch && matchesCategory && matchesValidation;
     });
 
     // Apply sorting
@@ -188,9 +328,17 @@ export function useOpml() {
         case "category":
           comparison = a.category.localeCompare(b.category);
           break;
-        case "date":
-          const dateA = a.lastChecked?.getTime() || 0;
-          const dateB = b.lastChecked?.getTime() || 0;
+        case "xmlUrl":
+          comparison = a.xmlUrl.localeCompare(b.xmlUrl);
+          break;
+        case "isValid":
+          const statusA = a.isValid === undefined ? -1 : a.isValid ? 1 : 0;
+          const statusB = b.isValid === undefined ? -1 : b.isValid ? 1 : 0;
+          comparison = statusA - statusB;
+          break;
+        case "lastUpdated":
+          const dateA = a.lastUpdated?.getTime() || 0;
+          const dateB = b.lastUpdated?.getTime() || 0;
           comparison = dateA - dateB;
           break;
       }
@@ -199,10 +347,13 @@ export function useOpml() {
     });
 
     return result;
-  }, [feeds, searchQuery, selectedCategory, sortBy, sortOrder]);
+  }, [feeds, searchQuery, selectedCategory, validationFilter, sortBy, sortOrder]);
 
   // Get unique categories
   const categories = useMemo(() => {
+    if (!feeds || !Array.isArray(feeds)) {
+      return [];
+    }
     const uniqueCategories = Array.from(
       new Set(feeds.map((feed) => feed.category))
     );
@@ -211,10 +362,23 @@ export function useOpml() {
 
   // Calculate stats
   const stats: OpmlStats = useMemo(() => {
+    if (!feeds || !Array.isArray(feeds)) {
+      return {
+        totalFeeds: 0,
+        selectedFeeds: 0,
+        categories: [],
+        validFeeds: 0,
+        invalidFeeds: 0,
+        uncheckedFeeds: 0,
+      };
+    }
     return {
       totalFeeds: feeds.length,
       selectedFeeds: feeds.filter((f) => f.isSelected).length,
       categories: categories,
+      validFeeds: feeds.filter((f) => f.isValid === true).length,
+      invalidFeeds: feeds.filter((f) => f.isValid === false).length,
+      uncheckedFeeds: feeds.filter((f) => f.isValid === undefined).length,
     };
   }, [feeds, categories]);
 
@@ -227,22 +391,28 @@ export function useOpml() {
     setSearchQuery,
     selectedCategory,
     setSelectedCategory,
+    validationFilter,
+    setValidationFilter,
     sortBy,
     setSortBy,
     sortOrder,
     setSortOrder,
+    isValidating,
+    isRefreshingDates,
+    refreshProgress,
     importOpml,
     importJson,
     exportFeeds,
     exportFeedsAsJson,
     updateFeed,
     deleteFeed,
+    bulkDeleteFeeds,
     toggleFeedSelection,
     toggleAllSelection,
     bulkUpdateCategory,
     removeDuplicates,
     addCategory,
-    validateRssFeeds,
+    refreshLastUpdatedDates,
     undo,
     redo,
     canUndo,

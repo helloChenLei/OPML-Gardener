@@ -48,23 +48,24 @@
 
 ## v1.2.0 功能
 
-### 6. RSS 链接有效性检查 ✅
-- **位置**: 侧边栏操作按钮
+### 6. RSS 链接有效性检查 ✅ (已优化)
+- **位置**: 订阅源列表状态列 + 侧边栏筛选
 - **实现**:
-  - 批量验证所有订阅源的 RSS 链接
-  - 显示实时验证进度
-  - 统计有效和无效的订阅源数量
-  - 验证结果保存到订阅源数据中
-- **文件**: `lib/rss-validator.ts`, `components/RssValidationDialog.tsx`
+  - 导入后自动在后台逐步验证
+  - 列表中显示验证状态图标（有效/无效/未检测）
+  - 侧边栏支持按验证状态筛选
+  - 显示各状态订阅源数量统计
+  - 验证过程中显示加载动画
+- **文件**: `lib/rss-validator.ts`, `hooks/useOpml.ts`, `components/FeedTable.tsx`, `components/FilterSidebar.tsx`
 
-### 7. 订阅源排序功能 ✅
-- **位置**: 侧边栏排序选项
+### 7. 订阅源排序功能 ✅ (已优化)
+- **位置**: 表头字段点击排序
 - **实现**:
-  - 支持按标题、分类、验证时间排序
-  - 支持升序/降序切换
+  - 支持按标题、分类、RSS链接、验证状态排序
+  - 点击表头切换升序/降序
+  - 排序图标显示当前排序状态
   - 排序实时更新
-  - 排序状态持久化
-- **文件**: `hooks/useOpml.ts`, `components/FilterSidebar.tsx`
+- **文件**: `hooks/useOpml.ts`, `components/FeedTable.tsx`
 
 ### 8. 导入/导出 JSON 格式 ✅
 - **位置**: 导入区域和导出预览
@@ -75,14 +76,8 @@
   - 版本化 JSON 格式
 - **文件**: `lib/json-handler.ts`, `components/OpmlUploader.tsx`
 
-### 9. 订阅源标签系统 ✅
-- **位置**: 订阅源表格标签列
-- **实现**:
-  - 为每个订阅源添加多个自定义标签
-  - 可视化标签编辑器
-  - 支持添加和删除标签
-  - 标签数据保存和导出
-- **文件**: `components/TagsEditor.tsx`, `types/index.ts`
+### 9. ~~订阅源标签系统~~ ❌ (已移除)
+- 该功能已根据需求移除
 
 ### 10. 键盘快捷键支持 ✅
 - **实现**:
@@ -129,25 +124,33 @@ type FeedItem = {
   xmlUrl: string;
   htmlUrl?: string;
   category: string;
-  tags?: string[];           // 新增：标签
   isValid?: boolean;         // 新增：验证状态
   lastChecked?: Date;        // 新增：最后验证时间
   originalData?: any;
   isSelected: boolean;
+};
+
+type OpmlStats = {
+  totalFeeds: number;
+  selectedFeeds: number;
+  categories: string[];
+  validFeeds?: number;       // 新增：有效订阅源数量
+  invalidFeeds?: number;     // 新增：无效订阅源数量
+  uncheckedFeeds?: number;   // 新增：未检测订阅源数量
 };
 ```
 
 ## 用户体验改进
 
 1. **操作反馈**: 所有操作都有通知提示
-2. **进度显示**: 长时间操作显示进度条
+2. **自动验证**: 导入后自动在后台验证RSS链接
 3. **预览功能**: 导出前可以预览内容
 4. **快捷操作**: 键盘快捷键提高效率
 5. **主题切换**: 深色模式减轻眼睛疲劳
 6. **批量操作**: 提高大量数据处理效率
-7. **数据验证**: 确保 RSS 链接有效性
-8. **灵活排序**: 快速找到目标订阅源
-9. **标签管理**: 自定义组织方式
+7. **状态筛选**: 快速筛选有效/无效/未检测订阅源
+8. **表头排序**: 点击表头即可排序，直观便捷
+9. **状态可视化**: 列表中直接显示验证状态图标
 10. **历史记录**: 随时撤销错误操作
 
 ## 性能优化

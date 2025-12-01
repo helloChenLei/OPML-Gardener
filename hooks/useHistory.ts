@@ -6,15 +6,17 @@ export function useHistory<T>(initialState: T) {
   const [states, setStates] = useState<T[]>([initialState]);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const currentState = states[currentIndex];
+  // Ensure currentState is never undefined
+  const currentState = states[currentIndex] ?? initialState;
 
   const canUndo = currentIndex > 0;
   const canRedo = currentIndex < states.length - 1;
 
   const setState = useCallback((newState: T | ((prevState: T) => T)) => {
     setStates((prevStates) => {
+      const currentState = prevStates[currentIndex] || prevStates[0];
       const state = typeof newState === 'function' 
-        ? (newState as (prevState: T) => T)(prevStates[currentIndex])
+        ? (newState as (prevState: T) => T)(currentState)
         : newState;
       
       // Remove any future states when making a new change
@@ -24,15 +26,14 @@ export function useHistory<T>(initialState: T) {
       // Limit history to 50 states to prevent memory issues
       if (newStates.length > 50) {
         newStates.shift();
+        // Don't update currentIndex when we shift, as it should stay at the last position
+        setCurrentIndex(49);
         return newStates;
       }
       
+      // Update currentIndex synchronously with states
+      setCurrentIndex(newStates.length - 1);
       return newStates;
-    });
-    
-    setCurrentIndex((prev) => {
-      const newIndex = prev + 1;
-      return newIndex > 50 ? 50 : newIndex;
     });
   }, [currentIndex]);
 

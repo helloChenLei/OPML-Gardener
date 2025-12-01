@@ -5,15 +5,17 @@ import { useOpml } from "@/hooks/useOpml";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { OpmlUploader } from "@/components/OpmlUploader";
 import { FeedTable } from "@/components/FeedTable";
-import { FilterSidebar } from "@/components/FilterSidebar";
 import { AddCategoryDialog } from "@/components/AddCategoryDialog";
 import { ExportPreviewDialog } from "@/components/ExportPreviewDialog";
 import { BulkEditDialog } from "@/components/BulkEditDialog";
-import { RssValidationDialog } from "@/components/RssValidationDialog";
+import { FloatingActionBar } from "@/components/FloatingActionBar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import {
   Download,
   FileCheck,
@@ -24,7 +26,12 @@ import {
   Redo2,
   FolderPlus,
   Edit3,
-  Shield,
+  Search,
+  Filter,
+  XCircle,
+  Minus,
+  RefreshCw,
+  ChevronDown,
 } from "lucide-react";
 
 export default function Home() {
@@ -37,22 +44,28 @@ export default function Home() {
     setSearchQuery,
     selectedCategory,
     setSelectedCategory,
+    validationFilter,
+    setValidationFilter,
     sortBy,
     setSortBy,
     sortOrder,
     setSortOrder,
+    isValidating,
+    isRefreshingDates,
+    refreshProgress,
     importOpml,
     importJson,
     exportFeeds,
     exportFeedsAsJson,
     updateFeed,
     deleteFeed,
+    bulkDeleteFeeds,
     toggleFeedSelection,
     toggleAllSelection,
     bulkUpdateCategory,
     removeDuplicates,
     addCategory,
-    validateRssFeeds,
+    refreshLastUpdatedDates,
     undo,
     redo,
     canUndo,
@@ -65,9 +78,8 @@ export default function Home() {
   } | null>(null);
   const [showAddCategoryDialog, setShowAddCategoryDialog] = useState(false);
   const [showExportPreview, setShowExportPreview] = useState(false);
-  const [exportPreviewType, setExportPreviewType] = useState<"all" | "selected">("all");
+  const [exportPreviewType, setExportPreviewType] = useState<"all" | "selected" | "current">("all");
   const [showBulkEditDialog, setShowBulkEditDialog] = useState(false);
-  const [showValidationDialog, setShowValidationDialog] = useState(false);
 
   const showNotification = (message: string, type: "success" | "error") => {
     setNotification({ message, type });
@@ -83,26 +95,41 @@ export default function Home() {
     }
   };
 
-  const handleExportAll = () => {
-    setExportPreviewType("all");
-    setShowExportPreview(true);
-  };
-
-  const handleExportSelected = () => {
-    setExportPreviewType("selected");
+  const handleExport = (type: "all" | "selected" | "current") => {
+    setExportPreviewType(type);
     setShowExportPreview(true);
   };
 
   const handleConfirmExport = (format: 'opml' | 'json') => {
-    const selectedOnly = exportPreviewType === "selected";
-    const result = format === 'json' 
-      ? exportFeedsAsJson(selectedOnly) 
-      : exportFeeds(selectedOnly);
+    let feedsToExport = allFeeds;
+    let exportCount = 0;
     
-    if (result.success) {
-      showNotification(`成功导出 ${result.count} 个订阅源为 ${format.toUpperCase()}`, "success");
+    if (exportPreviewType === "selected") {
+      feedsToExport = allFeeds.filter((f) => f.isSelected);
+      exportCount = feedsToExport.length;
+    } else if (exportPreviewType === "current") {
+      feedsToExport = feeds; // filtered feeds
+      exportCount = feedsToExport.length;
     } else {
-      showNotification(`导出失败: ${result.error}`, "error");
+      exportCount = allFeeds.length;
+    }
+
+    if (exportCount === 0) {
+      showNotification("没有可导出的订阅源", "error");
+      return;
+    }
+
+    try {
+      if (format === 'json') {
+        const jsonContent = require('@/lib/json-handler').exportToJson(feedsToExport);
+        require('@/lib/json-handler').downloadJson(jsonContent, `opml_export_${new Date().toISOString().split('T')[0]}.json`);
+      } else {
+        const opmlContent = require('@/lib/opml-parser').exportOpml(feedsToExport);
+        require('@/lib/opml-parser').downloadOpml(opmlContent, `opml_export_${new Date().toISOString().split('T')[0]}.opml`);
+      }
+      showNotification(`成功导出 ${exportCount} 个订阅源为 ${format.toUpperCase()}`, "success");
+    } catch (error) {
+      showNotification(`导出失败: ${error}`, "error");
     }
   };
 
@@ -122,9 +149,47 @@ export default function Home() {
     }
   };
 
+  const handleRefreshDates = async () => {
+    const result = await refreshLastUpdatedDates();
+    if (result.success) {
+      showNotification(`成功刷新 ${result.count}/${result.total} 个订阅源的更新时间`, "success");
+    } else {
+      showNotification(`刷新失败: ${result.error}`, "error");
+    }
+  };
+
   const handleBulkUpdateCategory = (feedIds: string[], newCategory: string) => {
     bulkUpdateCategory(feedIds, newCategory);
     showNotification(`已将 ${feedIds.length} 个订阅源移动到 ${newCategory}`, "success");
+  };
+
+  const handleFloatingBarMoveToCategory = (categoryName: string) => {
+    const selectedIds = allFeeds.filter((f) => f.isSelected).map((f) => f.id);
+    if (selectedIds.length > 0) {
+      handleBulkUpdateCategory(selectedIds, categoryName);
+    }
+  };
+
+  const handleFloatingBarDelete = () => {
+    const count = bulkDeleteFeeds();
+    if (count > 0) {
+      showNotification(`已删除 ${count} 个订阅源`, "success");
+    }
+  };
+
+  const handleFloatingBarClearSelection = () => {
+    toggleAllSelection(false);
+  };
+
+  const handleSortChange = (field: typeof sortBy) => {
+    if (sortBy === field) {
+      // Toggle sort order if clicking the same field
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      // Set new field and default to ascending
+      setSortBy(field);
+      setSortOrder("asc");
+    }
   };
 
   // Setup keyboard shortcuts
@@ -146,7 +211,7 @@ export default function Home() {
       ctrl: true,
       handler: () => {
         if (stats.totalFeeds > 0) {
-          handleExportAll();
+          handleExport("all");
         }
       },
       description: "导出全部",
@@ -155,8 +220,9 @@ export default function Home() {
       key: "a",
       ctrl: true,
       handler: () => {
-        if (stats.totalFeeds > 0) {
-          toggleAllSelection(true);
+        if (feeds.length > 0) {
+          const feedIds = feeds.map(f => f.id);
+          toggleAllSelection(true, feedIds);
         }
       },
       description: "全选",
@@ -164,19 +230,24 @@ export default function Home() {
   ]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gray-50/50 dark:bg-slate-950">
       {/* Header */}
-      <header className="border-b bg-background sticky top-0 z-20">
-        <div className="container mx-auto px-6 py-4">
+      <header className="border-b glass-effect sticky top-0 z-20 shadow-sm">
+        <div className="max-w-screen-2xl mx-auto px-8 py-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="bg-primary text-primary-foreground p-2 rounded-lg">
-                <Rss className="h-6 w-6" />
+            <div className="flex items-center gap-5">
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-br from-primary to-purple-600 rounded-2xl blur-md opacity-50"></div>
+                <div className="relative bg-gradient-to-br from-primary to-purple-600 text-white p-3.5 rounded-2xl shadow-lg">
+                  <Rss className="h-8 w-8" />
+                </div>
               </div>
               <div>
-                <h1 className="text-2xl font-bold">OPML Gardener</h1>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent mb-1">
+                  OPML Gardener
+                </h1>
                 <p className="text-sm text-muted-foreground">
-                  RSS订阅管理工具
+                  优雅管理您的 RSS 订阅源
                 </p>
               </div>
             </div>
@@ -207,11 +278,6 @@ export default function Home() {
                   <Badge variant="secondary" className="text-sm">
                     总计: {stats.totalFeeds} 个订阅源
                   </Badge>
-                  {stats.selectedFeeds > 0 && (
-                    <Badge className="text-sm">
-                      已选: {stats.selectedFeeds} 个
-                    </Badge>
-                  )}
                   <div className="border-l pl-3">
                     <ThemeToggle />
                   </div>
@@ -225,25 +291,26 @@ export default function Home() {
 
       {/* Notification */}
       {notification && (
-        <div className="fixed top-20 right-6 z-50 animate-in slide-in-from-right">
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 animate-in fade-in-0 slide-in-from-top-2">
           <Card
             className={`
+              shadow-lg min-w-[320px]
               ${
                 notification.type === "success"
-                  ? "border-green-500 bg-green-50"
-                  : "border-red-500 bg-red-50"
+                  ? "border-green-400 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/50 dark:to-emerald-950/50"
+                  : "border-red-400 bg-gradient-to-r from-red-50 to-rose-50 dark:from-red-950/50 dark:to-rose-950/50"
               }
             `}
           >
-            <CardContent className="p-4 flex items-center gap-3">
+            <CardContent className="p-4 flex items-center justify-center gap-3">
               {notification.type === "success" && (
-                <CheckCircle2 className="h-5 w-5 text-green-600" />
+                <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
               )}
               <p
-                className={`text-sm font-medium ${
+                className={`text-sm font-medium text-center ${
                   notification.type === "success"
-                    ? "text-green-900"
-                    : "text-red-900"
+                    ? "text-green-900 dark:text-green-100"
+                    : "text-red-900 dark:text-red-100"
                 }`}
               >
                 {notification.message}
@@ -254,119 +321,154 @@ export default function Home() {
       )}
 
       {/* Main Content */}
-      <main className="container mx-auto px-6 py-8">
+      <main className="max-w-screen-2xl mx-auto px-8 py-10">
         {stats.totalFeeds === 0 ? (
           // Empty state - Show uploader
-          <div className="max-w-2xl mx-auto mt-12">
-            <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold mb-2">欢迎使用 OPML Gardener</h2>
-              <p className="text-muted-foreground">
-                导入您的 OPML 文件，开始整理和管理您的 RSS 订阅源
+          <div className="max-w-3xl mx-auto mt-20">
+            <div className="text-center mb-12 space-y-4">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-primary/10 to-purple-600/10 rounded-3xl mb-4">
+                <Rss className="h-10 w-10 text-primary" />
+              </div>
+              <h2 className="text-4xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+                开始管理您的订阅源
+              </h2>
+              <p className="text-lg text-muted-foreground max-w-lg mx-auto leading-relaxed">
+                导入 OPML 或 JSON 文件，即可轻松整理、筛选和导出您的 RSS 订阅
               </p>
             </div>
             <OpmlUploader onFileLoad={handleFileLoad} />
           </div>
         ) : (
-          // Main workspace with filters and table
-          <div className="flex gap-6">
-            {/* Sidebar */}
-            <aside className="w-64 flex-shrink-0">
-              <FilterSidebar
+          // Main workspace - Notion-style layout
+          <div className="w-full">
+            {/* Notion-style Toolbar */}
+            <div className="h-14 border-b bg-white dark:bg-slate-950 flex items-center justify-between px-4 gap-4">
+              {/* Left side: Search + Category + Status filters */}
+              <div className="flex items-center gap-3 flex-1">
+                {/* Search Input */}
+                <div className="relative w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="搜索订阅源..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 h-9 text-sm border-slate-200 dark:border-slate-700"
+                  />
+                </div>
+
+                {/* Category Filter */}
+                <Select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="h-9 w-40 text-sm border-slate-200 dark:border-slate-700"
+                >
+                  <option value="all">全部分类</option>
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </Select>
+
+                {/* Status Filter */}
+                <Select
+                  value={validationFilter}
+                  onChange={(e) => setValidationFilter(e.target.value as "all" | "valid" | "invalid" | "unchecked")}
+                  className="h-9 w-32 text-sm border-slate-200 dark:border-slate-700"
+                >
+                  <option value="all">全部状态</option>
+                  <option value="valid">有效</option>
+                  <option value="invalid">无效</option>
+                  <option value="unchecked">未检测</option>
+                </Select>
+
+                {/* Results count */}
+                <span className="text-sm text-muted-foreground">
+                  显示 <span className="font-medium text-foreground">{feeds.length}</span> / {allFeeds.length}
+                </span>
+              </div>
+
+              {/* Right side: Action buttons */}
+              <div className="flex items-center gap-2">
+                {/* Export Dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="h-9 text-sm gap-1.5 px-3"
+                    >
+                      <Download className="h-4 w-4" />
+                      <span>导出</span>
+                      <div className="h-4 w-px bg-white/20 mx-0.5"></div>
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem onClick={() => handleExport("all")}>
+                      <Download className="h-3.5 w-3.5 mr-2" />
+                      导出全部 ({allFeeds.length})
+                    </DropdownMenuItem>
+                    {stats.selectedFeeds > 0 && (
+                      <DropdownMenuItem onClick={() => handleExport("selected")}>
+                        <CheckCircle2 className="h-3.5 w-3.5 mr-2 text-primary" />
+                        导出选中 ({stats.selectedFeeds})
+                      </DropdownMenuItem>
+                    )}
+                    {(searchQuery || selectedCategory !== "all" || validationFilter !== "all") && (
+                      <DropdownMenuItem onClick={() => handleExport("current")}>
+                        <Filter className="h-3.5 w-3.5 mr-2 text-purple-600" />
+                        导出当前视图 ({feeds.length})
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 w-9 p-0"
+                  onClick={handleRefreshDates}
+                  disabled={isRefreshingDates}
+                  title={isRefreshingDates ? `刷新中... ${refreshProgress.completed}/${refreshProgress.total}` : "刷新更新时间"}
+                >
+                  <RefreshCw className={`h-4 w-4 ${isRefreshingDates ? 'animate-spin' : ''}`} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 w-9 p-0"
+                  onClick={handleRemoveDuplicates}
+                  title="去重"
+                >
+                  <Sparkles className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Table without card wrapper */}
+            <div className="w-full overflow-hidden">
+              <FeedTable
+                feeds={feeds}
                 categories={categories}
-                selectedCategory={selectedCategory}
-                onCategoryChange={setSelectedCategory}
+                onUpdateFeed={updateFeed}
+                onDeleteFeed={deleteFeed}
+                onToggleSelection={toggleFeedSelection}
+                onToggleAllSelection={toggleAllSelection}
+                selectedCount={stats.selectedFeeds}
+                totalCount={allFeeds.length}
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSortChange={handleSortChange}
+                isValidating={isValidating}
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
-                sortBy={sortBy}
-                onSortByChange={setSortBy}
-                sortOrder={sortOrder}
-                onSortOrderChange={setSortOrder}
+                validationFilter={validationFilter}
+                onValidationFilterChange={setValidationFilter}
+                selectedCategory={selectedCategory}
+                onCategoryChange={setSelectedCategory}
+                stats={stats}
               />
-
-              {/* Actions */}
-              <Card className="mt-4">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">操作</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start"
-                    onClick={() => setShowAddCategoryDialog(true)}
-                  >
-                    <FolderPlus className="h-4 w-4 mr-2" />
-                    添加新分类
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start"
-                    onClick={() => setShowBulkEditDialog(true)}
-                    disabled={stats.selectedFeeds === 0}
-                  >
-                    <Edit3 className="h-4 w-4 mr-2" />
-                    批量编辑分类 ({stats.selectedFeeds})
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start"
-                    onClick={() => setShowValidationDialog(true)}
-                  >
-                    <Shield className="h-4 w-4 mr-2" />
-                    验证 RSS 链接
-                  </Button>
-                  <Button
-                    variant="default"
-                    className="w-full justify-start"
-                    onClick={handleExportAll}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    导出全部
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start"
-                    onClick={handleExportSelected}
-                    disabled={stats.selectedFeeds === 0}
-                  >
-                    <FileCheck className="h-4 w-4 mr-2" />
-                    导出已选 ({stats.selectedFeeds})
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start"
-                    onClick={handleRemoveDuplicates}
-                  >
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    去除重复
-                  </Button>
-                </CardContent>
-              </Card>
-            </aside>
-
-            {/* Main Table */}
-            <div className="flex-1 min-w-0">
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle>订阅源列表</CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      显示 {feeds.length} / {stats.totalFeeds} 个订阅源
-                    </p>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <FeedTable
-                    feeds={feeds}
-                    categories={categories}
-                    onUpdateFeed={updateFeed}
-                    onDeleteFeed={deleteFeed}
-                    onToggleSelection={toggleFeedSelection}
-                    onToggleAllSelection={toggleAllSelection}
-                    selectedCount={stats.selectedFeeds}
-                    totalCount={allFeeds.length}
-                  />
-                </CardContent>
-              </Card>
             </div>
           </div>
         )}
@@ -381,6 +483,18 @@ export default function Home() {
         </div>
       </footer>
 
+      {/* Floating Action Bar */}
+      {stats.selectedFeeds > 0 && (
+        <FloatingActionBar
+          selectedCount={stats.selectedFeeds}
+          categories={categories}
+          onMoveToCategory={handleFloatingBarMoveToCategory}
+          onDelete={handleFloatingBarDelete}
+          onClearSelection={handleFloatingBarClearSelection}
+          onCreateCategory={() => setShowAddCategoryDialog(true)}
+        />
+      )}
+
       {/* Dialogs */}
       <AddCategoryDialog
         open={showAddCategoryDialog}
@@ -391,7 +505,13 @@ export default function Home() {
       <ExportPreviewDialog
         open={showExportPreview}
         onOpenChange={setShowExportPreview}
-        feeds={exportPreviewType === "all" ? allFeeds : allFeeds.filter((f) => f.isSelected)}
+        feeds={
+          exportPreviewType === "all" 
+            ? allFeeds 
+            : exportPreviewType === "selected"
+            ? allFeeds.filter((f) => f.isSelected)
+            : feeds
+        }
         onConfirmExport={handleConfirmExport}
         exportType={exportPreviewType}
       />
@@ -401,12 +521,6 @@ export default function Home() {
         selectedFeeds={allFeeds.filter((f) => f.isSelected)}
         categories={categories}
         onBulkUpdate={handleBulkUpdateCategory}
-      />
-      <RssValidationDialog
-        open={showValidationDialog}
-        onOpenChange={setShowValidationDialog}
-        onValidate={validateRssFeeds}
-        totalFeeds={stats.totalFeeds}
       />
     </div>
   );

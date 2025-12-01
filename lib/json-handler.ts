@@ -10,10 +10,14 @@ export function exportToJson(feeds: FeedItem[]): string {
   const data: JsonExportData = {
     version: "1.0",
     exportDate: new Date().toISOString(),
-    feeds: feeds.map((feed) => ({
-      ...feed,
-      lastChecked: feed.lastChecked?.toISOString() as any,
-    })),
+    feeds: feeds.map((feed) => {
+      const { lastChecked, lastUpdated, ...rest } = feed;
+      return {
+        ...rest,
+        lastChecked: lastChecked?.toISOString() as any,
+        lastUpdated: lastUpdated?.toISOString() as any,
+      };
+    }),
   };
 
   return JSON.stringify(data, null, 2);
@@ -30,6 +34,7 @@ export function parseJson(jsonContent: string): FeedItem[] {
     return data.feeds.map((feed: any) => ({
       ...feed,
       lastChecked: feed.lastChecked ? new Date(feed.lastChecked) : undefined,
+      lastUpdated: feed.lastUpdated ? new Date(feed.lastUpdated) : undefined,
       isSelected: false, // Reset selection state
     }));
   } catch (error) {
