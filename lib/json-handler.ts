@@ -1,4 +1,20 @@
-import { FeedItem } from "@/types";
+import { FeedItem, OpmlOutlineData } from "@/types";
+
+/**
+ * JSON 序列化的 Feed 数据（日期转为字符串）
+ */
+export interface SerializedFeedItem {
+  id: string;
+  title: string;
+  xmlUrl: string;
+  htmlUrl?: string;
+  category: string;
+  isValid?: boolean;
+  lastChecked?: string;
+  lastUpdated?: string;
+  originalData?: OpmlOutlineData;
+  isSelected: boolean;
+}
 
 export interface JsonExportData {
   version: string;
@@ -7,17 +23,16 @@ export interface JsonExportData {
 }
 
 export function exportToJson(feeds: FeedItem[]): string {
+  const serializedFeeds: SerializedFeedItem[] = feeds.map((feed) => ({
+    ...feed,
+    lastChecked: feed.lastChecked?.toISOString(),
+    lastUpdated: feed.lastUpdated?.toISOString(),
+  }));
+
   const data: JsonExportData = {
     version: "1.0",
     exportDate: new Date().toISOString(),
-    feeds: feeds.map((feed) => {
-      const { lastChecked, lastUpdated, ...rest } = feed;
-      return {
-        ...rest,
-        lastChecked: lastChecked?.toISOString() as any,
-        lastUpdated: lastUpdated?.toISOString() as any,
-      };
-    }),
+    feeds: serializedFeeds,
   };
 
   return JSON.stringify(data, null, 2);
@@ -31,10 +46,10 @@ export function parseJson(jsonContent: string): FeedItem[] {
       throw new Error("Invalid JSON format: missing feeds array");
     }
 
-    return data.feeds.map((feed: any) => ({
-      ...feed,
-      lastChecked: feed.lastChecked ? new Date(feed.lastChecked) : undefined,
-      lastUpdated: feed.lastUpdated ? new Date(feed.lastUpdated) : undefined,
+    return data.feeds.map((serializedFeed: SerializedFeedItem): FeedItem => ({
+      ...serializedFeed,
+      lastChecked: serializedFeed.lastChecked ? new Date(serializedFeed.lastChecked) : undefined,
+      lastUpdated: serializedFeed.lastUpdated ? new Date(serializedFeed.lastUpdated) : undefined,
       isSelected: false, // Reset selection state
     }));
   } catch (error) {

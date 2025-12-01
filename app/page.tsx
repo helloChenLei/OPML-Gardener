@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useOpml } from "@/hooks/useOpml";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { OpmlUploader } from "@/components/OpmlUploader";
@@ -11,11 +11,11 @@ import { BulkEditDialog } from "@/components/BulkEditDialog";
 import { FloatingActionBar } from "@/components/FloatingActionBar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
   Download,
   FileCheck,

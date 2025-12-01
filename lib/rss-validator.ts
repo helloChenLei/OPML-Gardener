@@ -70,11 +70,11 @@ export async function validateRssUrl(url: string): Promise<ValidationResult> {
         status: response.status,
         error: `HTTP ${response.status}`,
       };
-    } catch (fetchError: any) {
+    } catch (fetchError) {
       clearTimeout(timeoutId);
       
       // If it's a CORS error or network error, try GET request as fallback
-      if (fetchError.name === 'TypeError' || fetchError.message.includes('CORS')) {
+      if (fetchError instanceof Error && (fetchError.name === 'TypeError' || fetchError.message.includes('CORS'))) {
         try {
           // Some servers don't support HEAD, try a lightweight GET
           const getResponse = await fetch(url, {
@@ -96,7 +96,7 @@ export async function validateRssUrl(url: string): Promise<ValidationResult> {
         }
       }
 
-      if (fetchError.name === 'AbortError') {
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
         return {
           isValid: false,
           error: "Timeout (>5s)",
@@ -105,7 +105,7 @@ export async function validateRssUrl(url: string): Promise<ValidationResult> {
 
       return {
         isValid: false,
-        error: fetchError.message || "Network error",
+        error: fetchError instanceof Error ? fetchError.message : "Network error",
       };
     }
   } catch (error) {

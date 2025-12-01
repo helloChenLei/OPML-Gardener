@@ -1,3 +1,18 @@
+/**
+ * OPML Outline 元素的原始数据结构
+ */
+export type OpmlOutlineData = {
+  text?: string;
+  title?: string;
+  type?: string;
+  xmlUrl?: string;
+  htmlUrl?: string;
+  [key: string]: unknown; // 其他可选的 OPML 属性
+};
+
+/**
+ * Feed 订阅项
+ */
 export type FeedItem = {
   id: string;          // UUID
   title: string;       // Mapped from opml 'text' or 'title'
@@ -7,7 +22,7 @@ export type FeedItem = {
   isValid?: boolean;   // RSS link validation status
   lastChecked?: Date;  // Last validation check time
   lastUpdated?: Date;  // Last RSS feed update time (from feed itself)
-  originalData?: any;  // Keep other attributes just in case
+  originalData?: OpmlOutlineData;  // Keep other attributes just in case
   isSelected: boolean; // For UI state
 };
 

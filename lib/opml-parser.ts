@@ -1,5 +1,5 @@
 import { XMLParser, XMLBuilder } from "fast-xml-parser";
-import { FeedItem } from "@/types";
+import { FeedItem, OpmlOutlineData } from "@/types";
 import { generateId } from "./utils";
 
 /**
@@ -44,7 +44,7 @@ export function parseOpml(xmlContent: string): FeedItem[] {
   }
 
   // Process each top-level outline (category)
-  outlines.forEach((categoryOutline: any) => {
+  outlines.forEach((categoryOutline: OpmlOutlineData) => {
     const categoryName = categoryOutline.text || "Uncategorized";
     
     // Check if this outline has children (nested feeds)
@@ -72,7 +72,7 @@ export function parseOpml(xmlContent: string): FeedItem[] {
     }
 
     // Process each feed within the category
-    childOutlines.forEach((feedOutline: any) => {
+    childOutlines.forEach((feedOutline: OpmlOutlineData) => {
       if (feedOutline.xmlUrl) {
         feeds.push({
           id: generateId(),
@@ -89,7 +89,7 @@ export function parseOpml(xmlContent: string): FeedItem[] {
         if (!Array.isArray(deepOutlines)) {
           deepOutlines = [deepOutlines];
         }
-        deepOutlines.forEach((deepFeed: any) => {
+        deepOutlines.forEach((deepFeed: OpmlOutlineData) => {
           if (deepFeed.xmlUrl) {
             feeds.push({
               id: generateId(),
@@ -112,6 +112,12 @@ export function parseOpml(xmlContent: string): FeedItem[] {
 /**
  * Export feeds back to OPML format
  * Groups feeds by category and creates nested structure
+ * 
+ * 安全注意事项：
+ * - fast-xml-parser (v4.x) 的 XMLBuilder 会自动转义 XML 实体字符
+ * - 包括: & → &amp;, < → &lt;, > → &gt;, " → &quot;, ' → &apos;
+ * - 无需手动转义，XMLBuilder 会确保输出的 XML 符合 XML 1.0 规范
+ * - 参考: lib/xml-escape.ts 提供了备用的手动转义工具（仅在需要时使用）
  */
 export function exportOpml(feeds: FeedItem[], filename = "filtered_feeds.opml"): string {
   // Group feeds by category
