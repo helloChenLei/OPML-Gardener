@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>示例订阅列表</title>
+    <dateCreated>Mon, 01 Dec 2025 00:00:00 GMT</dateCreated>
+  </head>
+  <body>
+    <outline text="Articles">
+      <outline text="阮一峰的网络日志" type="rss" xmlUrl="https://www.ruanyifeng.com/blog/atom.xml" htmlUrl="https://www.ruanyifeng.com/blog/" />
+      <outline text="少数派" type="rss" xmlUrl="https://sspai.com/feed" htmlUrl="https://sspai.com/" />
+      <outline text="Matrix 精选" type="rss" xmlUrl="https://sspai.com/feed/matrix" htmlUrl="https://sspai.com/matrix" />
+    </outline>
+    <outline text="SocialMedia">
+      <outline text="Twitter - Tech" type="rss" xmlUrl="https://example.com/twitter/tech.rss" htmlUrl="https://twitter.com/" />
+      <outline text="微博热搜" type="rss" xmlUrl="https://example.com/weibo/hot.rss" htmlUrl="https://weibo.com/" />
+    </outline>
+    <outline text="Pictures">
+      <outline text="Unsplash Feed" type="rss" xmlUrl="https://example.com/unsplash/feed.rss" htmlUrl="https://unsplash.com/" />
+      <outline text="500px Popular" type="rss" xmlUrl="https://example.com/500px/popular.rss" htmlUrl="https://500px.com/" />
+    </outline>
+    <outline text="Videos">
+      <outline text="小高姐的魔法调料" type="rss" xmlUrl="https://example.com/youtube/xiaogaojie.rss" htmlUrl="https://www.youtube.com/" />
+      <outline text="Bilibili - 科技区" type="rss" xmlUrl="https://example.com/bilibili/tech.rss" htmlUrl="https://www.bilibili.com/" />
+    </outline>
+    <outline text="Audios">
+      <outline text="故事FM" type="rss" xmlUrl="https://example.com/storyfm/feed.rss" htmlUrl="https://storyfm.cn/" />
+      <outline text="声东击西" type="rss" xmlUrl="https://example.com/etw/feed.rss" htmlUrl="https://etw.fm/" />
+    </outline>
+    <outline text="Notifications">
+      <outline text="GitHub Releases" type="rss" xmlUrl="https://example.com/github/releases.rss" htmlUrl="https://github.com/" />
+      <outline text="App Store Updates" type="rss" xmlUrl="https://example.com/appstore/updates.rss" htmlUrl="https://apps.apple.com/" />
+    </outline>
+  </body>
+</opml>
+
